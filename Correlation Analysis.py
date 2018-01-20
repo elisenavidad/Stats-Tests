@@ -21,8 +21,10 @@ import matplotlib.pyplot as plt
 
 # Set variable paths
 # stations = ['Asaraghat']     #for testing one station
-foldername = "\\Test2\\"
+#specify folder where merged data files are, in the same directory as this script
+foldername = "\\DR\\"
 folderpath = os.path.dirname(os.path.abspath(__file__)) + foldername
+#Create list of stations in folder
 stations = [os.path.basename(x) for x in glob.glob(folderpath + "*_merged.csv")]
 stations = [s.replace('_merged.csv', '') for s in stations]
 
@@ -30,11 +32,10 @@ stations = [s.replace('_merged.csv', '') for s in stations]
 def root_mean_square_error(predicted, observed, n):
     return np.sqrt(((observed - predicted) ** 2) / n).mean()
 
-
 def nash_sutcliffe(predicted, observed, j):
     observed_mean = observed.mean()
-    NS_numerator = np.sum((predicted - observed) ** j)
-    NS_denominator = np.sum((observed - observed_mean) ** j)
+    NS_numerator = np.sum(np.abs(predicted - observed) ** j)
+    NS_denominator = np.sum(np.abs(observed - observed_mean) ** j)
     if NS_denominator == 0:
         NS_denominator = 1e-100
     NS_eff = 1 - NS_numerator / NS_denominator
@@ -42,6 +43,7 @@ def nash_sutcliffe(predicted, observed, j):
 
 
 def plot_station(dataframe, stations, folderpath):
+    #Create folder for plot files to live
     plt_filename = folderpath + "//Plots//" + str(stations) + "_plot.png"
     if not os.path.exists(folderpath + "//Plots"):
         os.makedirs(folderpath + "//Plots//")
@@ -52,13 +54,13 @@ def plot_station(dataframe, stations, folderpath):
 
 
 def correlation_stats(df, adjustment, beg, end):
-    # create Dataframe
+    # create Dataframe columns
     cor_coeff = {}
     mean_diff = {}
     mean_var = {}
     month_predicted = {}
     month_observed = {}
-
+    #Monthly metrics
     for i in range(beg, end):
         log_month_predicted = df.where(df.date.dt.month == i).dropna()['log Predicted']
         log_month_observed = df.where(df.date.dt.month == i).dropna()['log Recorded']
@@ -67,6 +69,15 @@ def correlation_stats(df, adjustment, beg, end):
         mean_var[i] = np.var(log_month_observed - log_month_predicted)
         month_predicted[i] = np.exp(np.mean(log_month_predicted - adjustment))
         month_observed[i] = np.exp(np.mean(log_month_observed - adjustment))
+    #Yearly Metrics
+    log_pred=df.dropna()['log Predicted']
+    log_observed=df.dropna()['log Recorded']
+    cor_coeff[14]=scipy.stats.pearsonr(log_observed,log_pred)
+    mean_diff[14]=np.exp(scipy.stats.gmean(log_observed) - scipy.stats.gmean(log_pred))
+    mean_var[14]=np.var(log_observed-log_pred)
+    month_predicted[14] = np.exp(np.mean(log_pred - adjustment))
+    month_observed[14] = np.exp(np.mean(log_observed - adjustment))
+
 
     # Define dataframe columns
     cor_coeff_df = pd.DataFrame.from_dict(cor_coeff, orient='Index')
@@ -85,16 +96,26 @@ def error_stats(df, beg, end):
     rmse = {}
     rmse_log = {}
     NS_eff = {}
+    #calculate metrics by month
     for i in range(beg, end):
-        predicted = df.where(df.date.dt.month == i).dropna()['predicted streamflow']
-        observed = df.where(df.date.dt.month == i).dropna()['recorded streamflow']
-        log_month_predicted = df.where(df.date.dt.month == i).dropna()['log Predicted']
-        log_month_observed = df.where(df.date.dt.month == i).dropna()['log Recorded']
-        n = predicted.count()
-        # print n
-        rmse[i] = root_mean_square_error(predicted, observed, n)
-        rmse_log[i] = root_mean_square_error(log_month_predicted, log_month_observed, n)
-        NS_eff[i] = nash_sutcliffe(log_month_predicted, log_month_observed, 2)
+            predicted = df.where(df.date.dt.month == i).dropna()['predicted streamflow']
+            observed = df.where(df.date.dt.month == i).dropna()['recorded streamflow']
+            log_month_predicted = df.where(df.date.dt.month == i).dropna()['log Predicted']
+            log_month_observed = df.where(df.date.dt.month == i).dropna()['log Recorded']
+            n = predicted.count()
+            # print n
+            rmse[i] = root_mean_square_error(predicted, observed, n)
+            rmse_log[i] = root_mean_square_error(log_month_predicted, log_month_observed, n)
+            NS_eff[i] = nash_sutcliffe(log_month_predicted, log_month_observed, 2)
+    #Calculate metrics for year
+    predicted=df.dropna()['predicted streamflow']
+    observed=df.dropna()['recorded streamflow']
+    log_predicted=df.dropna()['log Predicted']
+    log_observed=df.dropna()['log Recorded']
+    n=predicted.count()
+    rmse[14] = root_mean_square_error(predicted, observed, n)
+    rmse_log[14] = root_mean_square_error(log_predicted, log_observed, n)
+    NS_eff[14] = nash_sutcliffe(log_predicted, log_observed, 2)
 
     rmse_df = pd.DataFrame.from_dict(rmse, orient='Index')
     # print rmse_df
@@ -120,7 +141,7 @@ def monthly_stats_analysis(stations, folderpath, datapath):
     # Account for any negatives:
     if min(df['log Predicted']) < 0 or min(df['log Recorded']) < 0:
         adjustment = max(abs(min(df['log Predicted'])), abs(min(df['log Recorded']))) + 1
-        print adjustment
+        print( adjustment)
         df['log Predicted'] = df['log Predicted'] + adjustment
         df['log Recorded'] = df['log Recorded'] + adjustment
     else:
@@ -132,6 +153,7 @@ def monthly_stats_analysis(stations, folderpath, datapath):
     df['difference'] = df[['log Recorded']].sub(df['log Predicted'], axis=0)
 
     # Correlation Statistics
+    #Months are from 1 to 12, 13 is to calculate yearly statistics
     correlation_df = correlation_stats(df, adjustment, 1, 13)
     # Error Metrics
     error_df = error_stats(df, 1, 13)
@@ -140,7 +162,7 @@ def monthly_stats_analysis(stations, folderpath, datapath):
     results_df = pd.concat([correlation_df, error_df], axis=1)
     results_df.index.name = "Month"
     results_df['Station'] = stations
-    print results_df
+    print (results_df)
 
     # Plot Results
     plot_station(results_df, stations, folderpath)
@@ -152,7 +174,7 @@ def monthly_stats_analysis(stations, folderpath, datapath):
     pred_value = results_df['Predicted Flow']
     obs_value = results_df['Observed Flow']
     rmse_val = root_mean_square_error(pred_value, obs_value, 12)
-    print av_cor, av_mean, av_var, rmse_val
+    print (av_cor, av_mean, av_var, rmse_val)
 
     # Print Results
     datapath_results = folderpath + "//Results//" + stations + "_results.csv"
@@ -162,6 +184,7 @@ def monthly_stats_analysis(stations, folderpath, datapath):
 
 
 def combine_csvs(folderpath):
+    #Creates summary csv files for each folder of merged datafiles
     results = glob.glob(folderpath + "*_results.csv")
     df_list = []
     for file in tqdm(sorted(results)):
@@ -173,7 +196,7 @@ def combine_csvs(folderpath):
 # Run statistics for each station in station list
 for i in stations:
     station = str(i)
-    print station
+    print (station)
     datapath = str(folderpath) + station + "_merged.csv"
     monthly_stats_analysis(station, folderpath, datapath)
 
