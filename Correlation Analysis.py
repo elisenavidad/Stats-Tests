@@ -19,10 +19,11 @@ import glob
 import os
 import matplotlib.pyplot as plt
 
+
 # Set variable paths
 # stations = ['Asaraghat']     #for testing one station
 #specify folder where merged data files are, in the same directory as this script
-foldername = "\\DR\\"
+foldername = "\\Test\\"
 folderpath = os.path.dirname(os.path.abspath(__file__)) + foldername
 #Create list of stations in folder
 stations = [os.path.basename(x) for x in glob.glob(folderpath + "*_merged.csv")]
@@ -40,6 +41,12 @@ def nash_sutcliffe(predicted, observed, j):
         NS_denominator = 1e-100
     NS_eff = 1 - NS_numerator / NS_denominator
     return NS_eff
+
+def r_squared(predicted, observed):
+    return (((observed - observed.mean()) * (predicted - predicted.mean())).sum()) ** 2 /(((observed - observed.mean()) ** 2).sum() * ((predicted - predicted.mean()) ** 2).sum())
+
+def spectral_angle(predicted, observed):
+    return (np.dot(predicted, observed) / (np.linalg.norm(predicted) * np.linalg.norm(observed)))
 
 
 def plot_station(dataframe, stations, folderpath):
@@ -96,6 +103,8 @@ def error_stats(df, beg, end):
     rmse = {}
     rmse_log = {}
     NS_eff = {}
+    R2={}
+    sa={}
     #calculate metrics by month
     for i in range(beg, end):
             predicted = df.where(df.date.dt.month == i).dropna()['predicted streamflow']
@@ -107,6 +116,8 @@ def error_stats(df, beg, end):
             rmse[i] = root_mean_square_error(predicted, observed, n)
             rmse_log[i] = root_mean_square_error(log_month_predicted, log_month_observed, n)
             NS_eff[i] = nash_sutcliffe(log_month_predicted, log_month_observed, 2)
+            R2[i]=r_squared(log_month_predicted,log_month_observed)
+            sa[i]=spectral_angle(predicted,observed)
     #Calculate metrics for year
     predicted=df.dropna()['predicted streamflow']
     observed=df.dropna()['recorded streamflow']
@@ -116,13 +127,18 @@ def error_stats(df, beg, end):
     rmse[14] = root_mean_square_error(predicted, observed, n)
     rmse_log[14] = root_mean_square_error(log_predicted, log_observed, n)
     NS_eff[14] = nash_sutcliffe(log_predicted, log_observed, 2)
+    R2[14]=r_squared(predicted,observed)
+    sa[14]=spectral_angle(predicted,observed)
+
 
     rmse_df = pd.DataFrame.from_dict(rmse, orient='Index')
-    # print rmse_df
     rmse_log_df = pd.DataFrame.from_dict(rmse_log, orient='Index')
     NS_eff_df = pd.DataFrame.from_dict(NS_eff, orient='Index')
-    error_df = pd.concat([rmse_df, rmse_log_df, NS_eff_df], axis=1)
-    error_df.columns = ['RMSE', 'Log RMSE', 'Nash-Sutcliffe Efficiency']
+    R2_df=pd.DataFrame.from_dict(R2, orient='Index')
+    sa_df=pd.DataFrame.from_dict(sa, orient='Index')
+    error_df = pd.concat([rmse_df, rmse_log_df, NS_eff_df, R2_df, sa_df], axis=1)
+
+    error_df.columns = ['RMSE', 'Log RMSE', 'Nash-Sutcliffe Efficiency', 'R^2 Coefficient', 'Spectral Angle']
     return error_df
 
 
