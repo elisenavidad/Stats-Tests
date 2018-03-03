@@ -11,7 +11,9 @@ import numpy as np
 import os
 from merge_data_script import merge_data
 import re
+import csv
 import datetime as dt
+
 
 def sort_key(str):
     return int("".join(re.findall("\d*", str)))
@@ -23,7 +25,6 @@ folderpath=os.path.dirname(os.path.abspath(__file__))+foldername
 print (folderpath)
 spt_forecast=[os.path.basename(x) for x in glob.glob(folderpath+"*.nc")]
 spt_forecast.sort(key=sort_key)
-print(spt_forecast)
 
 #file for testing
 file="D:\\Jackson\\Forecast Stats\\Python\\20170608.12\\Qout_brazil_itajai_acu_historical_3.nc"
@@ -64,7 +65,6 @@ def data_format(file,counter):
     recorded_forecast=basepath+"\\Observed Data\\"+'Observed_DataBlumenau.csv'
     predicted_forecast=datapath_results
     location=basepath+'\\Results\\'+'\\Merged Files\\'+"Blumenau_"+str(stream_ID)+"_"+str(counter)
-    print(location)
     if not os.path.exists(basepath+'\\Results\\'+'\\Merged Files\\'):
         os.makedirs(basepath+'\\Results\\'+'\\Merged Files\\')
     merge_data(recorded_forecast,predicted_forecast,location)
@@ -77,15 +77,56 @@ def data_format(file,counter):
     df_compare=pd.read_csv(merged_file)
     return df_compare
 
+def ensemble_plot(dataframe, basepath):
+    plt_filename=basepath+"\\Plots\\"+"Summary Plot.png"
+    if not os.path.exists(basepath+"\\Plots"):
+        os.makedirs(basepath+"\\Plots\\")
+    return
+
+def combine_forecasts(folderpath):
+    counter=1
+    #Grab all the forecast files
+    forecasts=glob.glob(folderpath+"*_merged.csv")
+    forecasts.sort(key=sort_key)
+    #Start new dataframe from first forecast
+    frame=pd.read_csv(forecasts[0])
+    #Format frame to make it look pretty
+    frame=frame[['Datetime','recorded streamflow','predicted streamflow']]
+    frame.columns=['Datetime','Recorded Streamflow', 'Forecast '+str(counter)]
+    frame=frame.set_index('Datetime')
+    print(frame)
+    counter+=1
+    #Loop through other files and add them to make a super dataframe of all the forecasts
+    for file in forecasts[1:51]:
+        df=pd.read_csv(file,index_col=0)
+        # print(df)
+        frame=pd.concat([frame,df['predicted streamflow']], axis=1)
+        #Rename new predicted streamflow column to "Forecast #"
+        frame=frame.rename(columns={'predicted streamflow':'Forecast '+str(counter)})
+        print(frame)
+
+        counter+=1
+
+        basefile=basepath+'\\Results\\'+"Forecast Summary.csv"
+        print(basefile)
+        frame.to_csv(basefile,sep=',',index=True)
+
+    return frame
+
 
 def ensemble_stats(file):
     return file
 
+def error_stats(df):
+    return df
 
-counter=1
-for i in spt_forecast:
-    forecast=folderpath + str(i)
-    print(forecast)
-    data_format(forecast,counter)
-    counter+=1
+
+# counter=1
+# for i in spt_forecast:
+#     forecast=folderpath + str(i)
+#     print(forecast)
+#     data_format(forecast,counter)
+#     counter+=1
+results_path=basepath+'\\Results\\Merged Files\\'
+combine_forecasts(results_path)
 
