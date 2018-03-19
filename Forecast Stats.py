@@ -9,30 +9,43 @@ import glob
 import pandas as pd
 import numpy as np
 import os
-from merge_data_script import merge_data
 import re
 import hydrostats as hs
 import scipy
+from scipy.stats import norm
 import csv
 import datetime as dt
 
-
+#Used to sort files into sequential order
 def sort_key(str):
     return int("".join(re.findall("\d*", str)))
 
 #set file paths
+subdirectory="\\Blumenau_20170523.00"
 basepath=os.path.dirname(os.path.abspath(__file__))
-foldername="\\20170608.12\\"
+#specify folder of forecast netCDF files
+foldername="\\20170523.00\\"
 folderpath=os.path.dirname(os.path.abspath(__file__))+foldername
 print (folderpath)
 spt_forecast=[os.path.basename(x) for x in glob.glob(folderpath+"*.nc")]
 spt_forecast.sort(key=sort_key)
 
 #file for testing
-file="D:\\Jackson\\Forecast Stats\\Python\\20170608.12\\Qout_brazil_itajai_acu_historical_3.nc"
+# file="D:\\Jackson\\Forecast Stats\\Python\\20170608.12\\Qout_brazil_itajai_acu_historical_3.nc"
 
 #Set River ID
-stream_ID=382
+stream_ID=383
+
+def merge_data(recorded_data,interim_data,location):
+    #Importing data into a dataframe
+    df_recorded = pd.read_csv(recorded_data, delimiter=",", header=None, names=['recorded streamflow'], index_col=0, infer_datetime_format=True, skiprows=1)
+    df_predicted = pd.read_csv(interim_data, delimiter=",", header=None, names=['predicted streamflow'], index_col=0, infer_datetime_format=True, skiprows=1)
+    #Converting the index to datetime type
+    df_recorded.index = pd.to_datetime(df_recorded.index, infer_datetime_format=True)
+    df_predicted.index = pd.to_datetime(df_predicted.index, infer_datetime_format=True)
+    #Joining the two dataframes
+    df_merged = pd.DataFrame.join(df_predicted, df_recorded).dropna()
+    df_merged.to_csv(location + "_merged.csv",sep=",",index_label="Datetime")
 
 def data_format(file,counter):
     print("Counter = " +str(counter))
@@ -56,19 +69,21 @@ def data_format(file,counter):
     cols=df.columns.tolist()
     cols=cols[-1:]+cols[:-1]
     df=df[cols]
-    print(df)
+    # print(df)
 
     #Print extracted flow to temporary csv
-    datapath_results=basepath+"//Results//"+"tempflow.csv"
-    print (datapath_results)
+    datapath_results=basepath+subdirectory+"\\tempflow.csv"
+    if not os.path.exists(basepath+subdirectory):
+        os.makedirs(basepath+subdirectory)
+    # print (datapath_results)
     df.to_csv(datapath_results,sep=',',index=False)
 
     #Merge csv with observed data
-    recorded_forecast=basepath+"\\Observed Data\\"+'Observed_DataBlumenau.csv'
+    recorded_forecast=basepath+"\\Observed Data\\"+'Blumenau_Floodseason.csv'
     predicted_forecast=datapath_results
-    location=basepath+'\\Results\\'+'\\Merged Files\\'+"Blumenau_"+str(stream_ID)+"_"+str(counter)
-    if not os.path.exists(basepath+'\\Results\\'+'\\Merged Files\\'):
-        os.makedirs(basepath+'\\Results\\'+'\\Merged Files\\')
+    location=basepath+subdirectory+'\\Merged Files\\'+"Blumenau_"+str(stream_ID)+"_"+str(counter)
+    if not os.path.exists(basepath+subdirectory+'\\Merged Files\\'):
+        os.makedirs(basepath+subdirectory+'\\Merged Files\\')
     merge_data(recorded_forecast,predicted_forecast,location)
     merged_file=location+"_merged.csv"
 
@@ -78,12 +93,6 @@ def data_format(file,counter):
     #Create new dataframe from .csv file
     df_compare=pd.read_csv(merged_file)
     return df_compare
-
-def ensemble_plot(dataframe, basepath):
-    plt_filename=basepath+"\\Plots\\"+"Summary Plot.png"
-    if not os.path.exists(basepath+"\\Plots"):
-        os.makedirs(basepath+"\\Plots\\")
-    return
 
 def combine_forecasts(folderpath):
     counter=1
@@ -96,7 +105,7 @@ def combine_forecasts(folderpath):
     frame=frame[['Datetime','recorded streamflow','predicted streamflow']]
     frame.columns=['Datetime','Recorded Streamflow', 'Forecast '+str(counter)]
     frame=frame.set_index('Datetime')
-    print(frame)
+    # print(frame)
     counter+=1
     #Loop through other files and add them to make a super dataframe of all the forecasts
     for file in forecasts[1:51]:
@@ -105,18 +114,20 @@ def combine_forecasts(folderpath):
         frame=pd.concat([frame,df['predicted streamflow']], axis=1)
         #Rename new predicted streamflow column to "Forecast #"
         frame=frame.rename(columns={'predicted streamflow':'Forecast '+str(counter)})
-        print(frame)
+        # print(frame)
 
         counter+=1
 
-        basefile=basepath+'\\Results\\'+"Forecast Summary.csv"
-        print(basefile)
+        basefile=basepath+subdirectory+"\\Forecast Summary.csv"
+        # print(basefile)
         frame.to_csv(basefile,sep=',',index=True)
 
     return frame
 
 
 def ensemble_stats(file):
+    #Cumulative distribution
+    x=np.sort()
     return file
 
 def error_stats(forecast_datapath,forecast_number,output_datapath):
@@ -198,7 +209,7 @@ def error_stats(forecast_datapath,forecast_number,output_datapath):
     #print results to .csv
 
     datapath_results=output_datapath+"Forecast_"+str(forecast_number)+".csv"
-    print(datapath_results)
+    # print(datapath_results)
     results_df.to_csv(datapath_results,sep=',', index=False)
     return results_df
 
@@ -217,15 +228,15 @@ for i in spt_forecast:
     print(forecast)
     data_format(forecast,counter)
     counter+=1
-results_path=basepath+'\\Results\\Merged Files\\'
+results_path=basepath+subdirectory+'\\Merged Files\\'
 combine_forecasts(results_path)
 
 forecasts=[os.path.basename(x) for x in glob.glob(results_path + "*_merged.csv")]
 forecasts.sort(key=sort_key)
 
-stats_summary_path=basepath+'\\Results\\Summary Files\\'
-if not os.path.exists(basepath+'\\Results\\Summary Files\\'):
-    os.makedirs(basepath+'\\Results\\Summary Files\\')
+stats_summary_path=basepath+subdirectory+'\\Summary Files\\'
+if not os.path.exists(basepath+subdirectory+'\\Summary Files\\'):
+    os.makedirs(basepath+subdirectory+'\\Summary Files\\')
 
 forecast_number=1
 
